@@ -248,7 +248,7 @@ endtemplate PN_A
 ///// Type C cell in BL  /////
 /////===================/////
 
-begintemplate PNC
+begintemplate PN_C
 	public soma, dend, apic, connect2target, type,drv, insert_mechs,cclA
 	create soma[1], dend[1], apic[1]
 
@@ -478,7 +478,7 @@ begintemplate PNC
 		if (numarg() == 2) ($o2 = nc)
 		return nc
 	}
-endtemplate PNC
+endtemplate PN_C
 
 
 begintemplate InterneuronCellf
