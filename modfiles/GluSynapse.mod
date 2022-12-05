@@ -47,6 +47,7 @@ TITLE Glutamatergic synapse
 NEURON {
     THREADSAFE
     POINT_PROCESS GluSynapse
+    RANGE initW,temp_tau,temp_rho0                 :synaptic scaler for assigning weights added by Greg Glickert 
     : AMPA Receptor
     GLOBAL tau_r_AMPA, E_AMPA
     RANGE tau_d_AMPA, gmax0_AMPA, gmax_d_AMPA, gmax_p_AMPA, g_AMPA
@@ -57,7 +58,7 @@ NEURON {
     : Stochastic Tsodyks-Markram Multi-Vesicular Release
     RANGE Use0_TM, Dep_TM, Fac_TM, Nrrp_TM
     RANGE Use_d_TM, Use_p_TM
-    BBCOREPOINTER rng_TMGluSynapse
+    BBCOREPOINTER rng_TM
     : NMDAR-mediated calcium current
     RANGE ica_NMDA
     : Spine
@@ -94,12 +95,15 @@ UNITS {
 
 
 PARAMETER {
+    initW         = 1.0                   : added by Greg Glickert to scale synaptic weight for large scale modeling
+    temp_tau      = 1.0
+    temp_rho0     = 1.0
     celsius                     (degC)
     : AMPA Receptor
     tau_r_AMPA      = 0.2       (ms)        : Tau rise, dual-exponential conductance profile
     tau_d_AMPA      = 1.7       (ms)        : Tau decay, IMPORTANT: tau_r < tau_d
     E_AMPA          = 0         (mV)        : Reversal potential
-    gmax0_AMPA      = 10.0      (nS)        : Initial peak conductance
+    gmax0_AMPA      = 1.0       (nS)        : Initial peak conductance
     gmax_d_AMPA     = 1.0       (nS)        : Peak conductance in the depressed state
     gmax_p_AMPA     = 2.0       (nS)        : Peak conductance in the potentitated state
     : NMDA Receptor
@@ -135,14 +139,14 @@ PARAMETER {
     cao_CR          = 2.0       (mM)        : Extracellular calcium concentration in slices
     : Long-term synaptic plasticity
     rho_star_GB     = 0.5       (1)
-    tau_ind_GB      = 70        (s)
-    tau_exp_GB      = 100       (s)
+    tau_ind_GB      = 10        (s)         : was 70 paper said that was good but no way effects decay time of rho and therefore how much time ampa is increasing 
+    tau_exp_GB      = 100       (s)         : effects how fast ampa rises
     tau_effca_GB    = 200       (ms)
-    gamma_d_GB      = 100       (1)
-    gamma_p_GB      = 450       (1)
-    theta_d_GB      = 0.006     (us/liter)
-    theta_p_GB      = 0.001     (us/liter)
-    rho0_GB         = 0         (1)
+    gamma_d_GB      = 101       (1)         
+    gamma_p_GB      = 216       (1)         : effects how much ampa increases by
+    theta_d_GB      = 0.039     (us/liter)  : threshold 1
+    theta_p_GB      = 0.045     (us/liter)  : threshold 2
+    rho0_GB         = 0         (1)         : where rho should start 
     : Misc
     synapseID       = 0
     verbose         = 0
@@ -181,9 +185,6 @@ ASSIGNED {
     v               (mV)
     vsyn            (mV)
     i               (nA)
-
-    inmda           (nA)
-    iampa           (nA)
 }
 
 STATE {
@@ -219,12 +220,14 @@ INITIAL{
     : Postsynaptic Ca2+ dynamics
     cai_CR      = min_ca_CR
     : Long-term synaptic plasticity
-    rho_GB      = rho0_GB
+    :rho_GB      = rho0_GB
     effcai_GB   = 0
-    dep_GB      = 0
-    pot_GB      = 0
+    dep_GB      = 0         : LTD flag
+    pot_GB      = 0         : LTP flag
     : Initialize watchers
     net_send(0, 1)
+    tau_ind_GB = temp_tau
+    rho_GB = temp_rho0
 }
 
 BREAKPOINT {
@@ -232,11 +235,11 @@ BREAKPOINT {
     SOLVE state METHOD derivimplicit
     : AMPA Receptor
     g_AMPA = (1e-3)*gmax_AMPA*(B_AMPA - A_AMPA)
-    i_AMPA = g_AMPA*(v-E_AMPA)
+    i_AMPA = g_AMPA*(v-E_AMPA) * initW
     : NMDA Receptor
     mggate = 1 / (1 + exp(-slope_NMDA*v) * (mgo_NMDA/scale_NMDA))
     g_NMDA = (1e-3)*gmax_NMDA*mggate*(B_NMDA - A_NMDA)
-    i_NMDA = g_NMDA*(v - E_NMDA)
+    i_NMDA = g_NMDA*(v - E_NMDA) * initW
     : NMDAR-mediated calcium current
     Pf_NMDA  = (4*cao_CR) / (4*cao_CR + (1/1.38) * 120 (mM)) * 0.6
     ica_NMDA = Pf_NMDA*g_NMDA*(v-40.0)
