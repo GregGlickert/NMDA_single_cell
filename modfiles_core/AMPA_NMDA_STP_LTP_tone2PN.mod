@@ -6,6 +6,7 @@ COMMENT
  * @date 2019-09-20
  * @version 1.0.0
  * @remark Copyright (c) BBP/EPFL 2005-2021. This work is licenced under Creative Common CC BY-NC-SA-4.0 (https://creativecommons.org/licenses/by-nc-sa/4.0/)
+ * Several changes have been made from the orginal version of this synapse by Greg Glickert to better adapt the model for Large Scale BMTk/Neuron models
  */
  Glutamatergic synapse model featuring:
 1) AMPA receptor with a dual-exponential conductance profile.
@@ -46,31 +47,30 @@ TITLE Glutamatergic synapse
 
 NEURON {
     THREADSAFE
-    POINT_PROCESS GluSynapse
-    RANGE initW,temp_tau,temp_rho0                 :synaptic scaler for assigning weights added by Greg Glickert 
+    POINT_PROCESS AMPA_NMDA_STP_LTP_tone2PN
+    RANGE initW,temp_tau             :synaptic scaler for assigning weights added by Greg Glickert 
     : AMPA Receptor
-    GLOBAL tau_r_AMPA, E_AMPA
+    RANGE tau_r_AMPA, E_AMPA
     RANGE tau_d_AMPA, gmax0_AMPA, gmax_d_AMPA, gmax_p_AMPA, g_AMPA
     : NMDA Receptor
-    GLOBAL mgo_NMDA, scale_NMDA, slope_NMDA
-    GLOBAL tau_r_NMDA, tau_d_NMDA, E_NMDA
+    RANGE mgo_NMDA, scale_NMDA, slope_NMDA
+    RANGE tau_r_NMDA, tau_d_NMDA, E_NMDA
     RANGE gmax_NMDA, g_NMDA
     : Stochastic Tsodyks-Markram Multi-Vesicular Release
     RANGE Use0_TM, Dep_TM, Fac_TM, Nrrp_TM
     RANGE Use_d_TM, Use_p_TM
-    BBCOREPOINTER rng_TM
     : NMDAR-mediated calcium current
     RANGE ica_NMDA
     : Spine
     RANGE volume_CR
     : VDCC (R-type)
-    GLOBAL ljp_VDCC, vhm_VDCC, km_VDCC, mtau_VDCC, vhh_VDCC, kh_VDCC, htau_VDCC, gca_bar_VDCC
+    RANGE ljp_VDCC, vhm_VDCC, km_VDCC, mtau_VDCC, vhh_VDCC, kh_VDCC, htau_VDCC, gca_bar_VDCC
     RANGE ica_VDCC
     : Postsynaptic Ca2+ dynamics
-    GLOBAL gamma_ca_CR, tau_ca_CR, min_ca_CR, cao_CR
+    RANGE gamma_ca_CR, tau_ca_CR, min_ca_CR, cao_CR
     : Long-term synaptic plasticity
-    GLOBAL rho_star_GB, tau_ind_GB, tau_exp_GB, tau_effca_GB
-    GLOBAL gamma_d_GB, gamma_p_GB
+    RANGE rho_star_GB, tau_ind_GB, tau_exp_GB, tau_effca_GB
+    RANGE gamma_d_GB, gamma_p_GB
     RANGE theta_d_GB, theta_p_GB, rho0_GB, dep_GB, pot_GB
     : Misc
     RANGE vsyn, synapseID, selected_for_report, verbose
@@ -97,7 +97,6 @@ UNITS {
 PARAMETER {
     initW         = 1.0                   : added by Greg Glickert to scale synaptic weight for large scale modeling
     temp_tau      = 1.0
-    temp_rho0     = 1.0
     celsius                     (degC)
     : AMPA Receptor
     tau_r_AMPA      = 0.2       (ms)        : Tau rise, dual-exponential conductance profile
@@ -105,7 +104,7 @@ PARAMETER {
     E_AMPA          = 0         (mV)        : Reversal potential
     gmax0_AMPA      = 1.0       (nS)        : Initial peak conductance
     gmax_d_AMPA     = 1.0       (nS)        : Peak conductance in the depressed state
-    gmax_p_AMPA     = 2.0       (nS)        : Peak conductance in the potentitated state
+    gmax_p_AMPA     = 1.5       (nS)        : Peak conductance in the potentitated state
     : NMDA Receptor
     mgo_NMDA        = 1         (mM)        : Extracellular magnesium concentration
     scale_NMDA      = 2.552     (mM)        : Scale of the mg block (Vargas-Caballero and Robinson 2003)
@@ -142,8 +141,8 @@ PARAMETER {
     tau_ind_GB      = 70        (s)         : was 70 paper said that was good but no way effects decay time of rho and therefore how much time ampa is increasing 
     tau_exp_GB      = 100       (s)         : effects how fast ampa rises
     tau_effca_GB    = 200       (ms)
-    gamma_d_GB      = 101       (1)         
-    gamma_p_GB      = 216       (1)         : effects how much ampa increases by
+    gamma_d_GB      = 100       (1)         
+    gamma_p_GB      = 450       (1)         : effects how much ampa increases by
     theta_d_GB      = 0.039     (us/liter)  : threshold 1
     theta_p_GB      = 0.045     (us/liter)  : threshold 2
     rho0_GB         = 0         (1)         : where rho should start 
@@ -154,16 +153,16 @@ PARAMETER {
 }
 
 VERBATIM
-/**
- * This Verbatim block is needed to generate random numbers from a uniform
- * distribution U(0, 1).
- */
 #include <stdlib.h>
-#include <stdio.h>
 #include <math.h>
-#include "nrnran123.h"
-double nrn_random_pick(void* r);
-void* nrn_random_arg(int argpos);
+
+#if 0
+#include <values.h> /* contains MAXLONG */
+#endif
+#if !defined(MAXLONG)
+#include <limits.h>
+#define MAXLONG LONG_MAX
+#endif
 ENDVERBATIM
 
 ASSIGNED {
@@ -220,14 +219,13 @@ INITIAL{
     : Postsynaptic Ca2+ dynamics
     cai_CR      = min_ca_CR
     : Long-term synaptic plasticity
-    :rho_GB      = rho0_GB
+    rho_GB      = rho0_GB
     effcai_GB   = 0
     dep_GB      = 0         : LTD flag
     pot_GB      = 0         : LTP flag
     : Initialize watchers
     net_send(0, 1)
     tau_ind_GB = temp_tau
-    rho_GB = temp_rho0
 }
 
 BREAKPOINT {
@@ -363,53 +361,9 @@ FUNCTION nernst(ci(mM), co(mM), z) (mV) {
     if(verbose > 1) { UNITSOFF printf("nernst:%g R:%g temperature (c):%g \n", nernst, R, celsius) UNITSON }
 }
 
-PROCEDURE setRNG() {
+FUNCTION urand()() {
     VERBATIM
-    #ifndef CORENEURON_BUILD
-    // For compatibility, allow for either MCellRan4 or Random123
-    // Distinguish by the arg types
-    // Object => MCellRan4, seeds (double) => Random123
-    usingR123 = 0;
-    if( ifarg(1) && hoc_is_double_arg(1) ) {
-        nrnran123_State** pv = (nrnran123_State**)(&_p_rng_TM);
-        uint32_t a2 = 0;
-        uint32_t a3 = 0;
-        if (*pv) {
-            nrnran123_deletestream(*pv);
-            *pv = (nrnran123_State*)0;
-        }
-        if (ifarg(2)) {
-            a2 = (uint32_t)*getarg(2);
-        }
-        if (ifarg(3)) {
-            a3 = (uint32_t)*getarg(3);
-        }
-        *pv = nrnran123_newstream3((uint32_t)*getarg(1), a2, a3);
-        usingR123 = 1;
-    } else if( ifarg(1) ) {   // not a double, so assume hoc object type
-        void** pv = (void**)(&_p_rng_TM);
-        *pv = nrn_random_arg(1);
-    } else {  // no arg, so clear pointer
-        void** pv = (void**)(&_p_rng_TM);
-        *pv = (void*)0;
-    }
-    #endif
-    ENDVERBATIM
-}
-
-FUNCTION urand() {
-    VERBATIM
-    double value;
-    if ( usingR123 ) {
-        value = nrnran123_dblpick((nrnran123_State*)_p_rng_TM);
-    } else if (_p_rng_TM) {
-        #ifndef CORENEURON_BUILD
-        value = nrn_random_pick(_p_rng_TM);
-        #endif
-    } else {
-        value = 0.0;
-    }
-    _lurand = value;
+    _lurand = (((double)random()) / ((double)MAXLONG));
     ENDVERBATIM
 }
 
@@ -424,85 +378,3 @@ FUNCTION brand(n, p) {
     }
     brand = success
 }
-
-FUNCTION bbsavestate() {
-    bbsavestate = 0
-    VERBATIM
-    #ifndef CORENEURON_BUILD
-        /* first arg is direction (0 save, 1 restore), second is array*/
-        /* if first arg is -1, fill xdir with the size of the array */
-        double *xdir, *xval, *hoc_pgetarg();
-        long nrn_get_random_sequence(void* r);
-        void nrn_set_random_sequence(void* r, int val);
-        xdir = hoc_pgetarg(1);
-        xval = hoc_pgetarg(2);
-        if (_p_rng_TM) {
-            // tell how many items need saving
-            if (*xdir == -1) {  // count items
-                if( usingR123 ) {
-                    *xdir = 2.0;
-                } else {
-                    *xdir = 1.0;
-                }
-                return 0.0;
-            } else if(*xdir ==0 ) {  // save
-                if( usingR123 ) {
-                    uint32_t seq;
-                    unsigned char which;
-                    nrnran123_getseq( (nrnran123_State*)_p_rng_TM, &seq, &which );
-                    xval[0] = (double) seq;
-                    xval[1] = (double) which;
-                } else {
-                    xval[0] = (double)nrn_get_random_sequence(_p_rng_TM);
-                }
-            } else {  // restore
-                if( usingR123 ) {
-                    nrnran123_setseq( (nrnran123_State*)_p_rng_TM, (uint32_t)xval[0], (char)xval[1] );
-                } else {
-                    nrn_set_random_sequence(_p_rng_TM, (long)(xval[0]));
-                }
-            }
-        }
-    #endif
-    ENDVERBATIM
-}
-
-VERBATIM
-static void bbcore_write(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
-    // make sure offset array non-null
-    if (iArray) {
-        // get handle to random123 instance
-        nrnran123_State** pv = (nrnran123_State**)(&_p_rng_TM);
-        // get location for storing ids
-        uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
-        // retrieve/store identifier seeds
-        nrnran123_getids3(*pv, ia, ia+1, ia+2);
-        // retrieve/store stream sequence
-        unsigned char which;
-        nrnran123_getseq(*pv, ia+3, &which);
-        ia[4] = (int)which;
-    }
-
-    // increment integer offset (2 identifier), no double data
-    *ioffset += 5;
-    *doffset += 0;
-}
-
-static void bbcore_read(double* dArray, int* iArray, int* doffset, int* ioffset, _threadargsproto_) {
-    // make sure it's not previously set
-    assert(!_p_rng_TM);
-    uint32_t* ia = ((uint32_t*)iArray) + *ioffset;
-    // make sure non-zero identifier seeds
-    if (ia[0] != 0 || ia[1] != 0 || ia[2] != 0) {
-        nrnran123_State** pv = (nrnran123_State**)(&_p_rng_TM);
-        // get new stream
-        *pv = nrnran123_newstream3(ia[0], ia[1], ia[2]);
-        // restore sequence
-        nrnran123_setseq(*pv, ia[3], (char)ia[4]);
-    }
-    // increment intger offset (2 identifiers), no double data
-    *ioffset += 5;
-    *doffset += 0;
-}
-ENDVERBATIM
-
